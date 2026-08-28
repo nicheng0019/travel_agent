@@ -155,9 +155,11 @@ def _route_leg(
     """用高德查询一个地点到另一个地点的首选驾车路线。"""
     try:
         start_location = start_location or geocode(start)
+        normalized_end = end.strip()
+        poi_area_suffixes = ("景区", "园区", "校区", "社区", "服务区")
         is_administrative = bool(
-            re.search(r"(?:省|市|自治州|地区|盟|县|区|旗|镇|乡)$", end.strip())
-        )
+            re.search(r"(?:省|市|自治州|地区|盟|县|区|旗|镇|乡)$", normalized_end)
+        ) and not normalized_end.endswith(poi_area_suffixes)
         end_locations = (
             [geocode(end)]
             if is_administrative

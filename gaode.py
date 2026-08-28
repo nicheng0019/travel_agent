@@ -64,17 +64,23 @@ def geocode_candidates(
     """返回地点可能对应的多个坐标，用于解决同名景点定位歧义。"""
     candidates: list[str] = []
     exact_candidates: list[str] = []
+    nearby_candidates: list[str] = []
+    nearby_exact_candidates: list[str] = []
 
-    def add_pois(items: list[dict[str, Any]]) -> None:
+    def add_pois(items: list[dict[str, Any]], *, nearby: bool = False) -> None:
         target = "".join(address.split()).casefold()
         for item in items:
             location = item.get("location")
             if not location:
                 continue
-            candidates.append(location)
+            destination = nearby_candidates if nearby else candidates
+            exact_destination = (
+                nearby_exact_candidates if nearby else exact_candidates
+            )
+            destination.append(location)
             name = "".join(str(item.get("name", "")).split()).casefold()
             if name == target:
-                exact_candidates.append(location)
+                exact_destination.append(location)
 
     # 对行程中的下一站优先做周边搜索，可避免选到外省同名景点。
     if reference_location:
@@ -95,7 +101,7 @@ def geocode_candidates(
         response.raise_for_status()
         around_data = response.json()
         if around_data.get("status") == "1":
-            add_pois(around_data.get("pois", []))
+            add_pois(around_data.get("pois", []), nearby=True)
 
     response = requests.get(
         f"{AMAP_URL}/geocode/geo",
@@ -127,7 +133,15 @@ def geocode_candidates(
     if poi_data.get("status") == "1":
         add_pois(poi_data.get("pois", []))
 
-    preferred = exact_candidates or candidates
+    # 周边搜索的地理上下文比全国范围内的名称完全匹配更可靠。例如用户从
+    # 额尔古纳湿地前往“白桦林景区”时，周边结果可能叫“额尔古纳白桦林景区”，
+    # 而全国搜索存在名称完全相同的新疆 POI。旧逻辑会因此丢掉正确的周边结果。
+    preferred = (
+        nearby_exact_candidates
+        or nearby_candidates
+        or exact_candidates
+        or candidates
+    )
     unique_candidates = list(dict.fromkeys(preferred))[:limit]
     if not unique_candidates:
         raise ValueError(
